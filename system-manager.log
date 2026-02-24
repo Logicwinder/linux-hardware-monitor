@@ -1,0 +1,28 @@
+2026-02-24 22:06:28,155 - SystemManager - INFO - ==================================================
+2026-02-24 22:06:28,155 - SystemManager - INFO - === 监控系统启动 ===
+2026-02-24 22:06:28,155 - SystemManager - INFO - 日志会同时显示在屏幕和保存到文件
+2026-02-24 22:06:28,155 - SystemManager - INFO - ==================================================
+2026-02-24 22:06:28,155 - SystemManager - INFO - 第1次检查
+2026-02-24 22:06:29,156 - SystemManager - INFO - CPU使用率：14.4%
+2026-02-24 22:06:29,157 - SystemManager - INFO - 内存使用率：77.5%
+2026-02-24 22:06:29,159 - SystemManager - INFO - 磁盘 C:\ 使用率: 59.2%
+2026-02-24 22:06:29,159 - SystemManager - INFO - 磁盘 D:\ 使用率: 78.5%
+2026-02-24 22:06:29,162 - SystemManager - INFO - 磁盘 X:\ 使用率: 43.6%
+2026-02-24 22:06:29,162 - SystemManager - INFO - 磁盘 Z:\ 使用率: 49.3%
+2026-02-24 22:06:29,162 - SystemManager - INFO - 本次检查一切正常
+2026-02-24 22:06:29,162 - SystemManager - INFO - 检查完成，等待3秒...
+2026-02-24 22:06:32,163 - SystemManager - INFO - 第2次检查
+2026-02-24 22:06:33,163 - SystemManager - INFO - CPU使用率：2.8%
+2026-02-24 22:06:33,164 - SystemManager - INFO - 内存使用率：77.5%
+2026-02-24 22:06:33,166 - SystemManager - INFO - 磁盘 C:\ 使用率: 59.2%
+2026-02-24 22:06:33,167 - SystemManager - INFO - 磁盘 D:\ 使用率: 78.5%
+2026-02-24 22:06:33,167 - SystemManager - INFO - 磁盘 X:\ 使用率: 43.6%
+2026-02-24 22:06:33,167 - SystemManager - INFO - 磁盘 Z:\ 使用率: 49.3%
+2026-02-24 22:06:33,167 - SystemManager - INFO - 本次检查一切正常
+2026-02-24 22:06:33,167 - SystemManager - INFO - 检查完成，等待3秒...
+2026-02-24 22:06:36,167 - SystemManager - INFO - === 监控系统停止 ===
+2026-02-24 22:06:36,167 - SystemManager - INFO - ==================================================
+2026-02-24 22:06:36,167 - SystemManager - INFO - 📝 日志已保存到 system_monitor.log
+2026-02-24 22:06:36,167 - SystemManager - INFO - 用以下命令查看日志:
+2026-02-24 22:06:36,167 - SystemManager - INFO - cat system_monitor.log
+2026-02-24 22:06:36,167 - SystemManager - INFO - ==================================================
