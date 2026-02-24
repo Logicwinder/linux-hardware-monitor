@@ -1,6 +1,5 @@
 name: Deploy System Monitor
 
-# 触发条件：当推送到 main 分支时
 on:
   push:
     branches: [ "main" ]
@@ -8,34 +7,19 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
-      # 1. 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. 通过 SSH 部署到服务器
       - name: Deploy to Server via SSH
         uses: appleboy/ssh-action@v1
         with:
-          # 下面这些变量需要从 GitHub Secrets 中获取
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          
-          # 要在服务器上执行的脚本命令
           script: |
-          # 进入家目录下的项目文件夹 (请根据你的实际路径修改)
-          # 假设你把代码放在 ~/linux-hardware-monitor
             cd ~/linux-hardware-monitor
-            
-          # 拉取最新代码 (其实 Action 已经帮我们要拉取了，但为了保险可以在服务器再 pull 一次，或者直接运行部署脚本)
-          # 注意：appleboy/ssh-action 默认是把本地代码打包传上去还是只执行命令？
-          # 修正：appleboy/ssh-action 默认只执行命令，不自动同步代码。
-          # 我们需要先同步代码。最简单的方法是让服务器 git pull。
-            
             git pull origin main
-            
-          # 执行我们刚才写的部署脚本
             bash deploy.sh

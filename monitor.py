@@ -129,7 +129,7 @@ if __name__ == "__main__":
         logger.info("用户中断监控")
     finally:  # 无论是否异常，最终都会执行
         logger.info("=== 监控系统停止 ===")
-        logger.info("%s", "=" * 50) 
+        logger.info("%s", "=" * 50)
         logger.info("📝 日志已保存到 system_monitor.log")
         logger.info("用以下命令查看日志:")
         logger.info("cat system_monitor.log")
