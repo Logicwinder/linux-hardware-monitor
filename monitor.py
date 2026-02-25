@@ -73,7 +73,7 @@ class SimpleMonitor:
             self.logger.info(f"内存使用率过高: {memory.percent}%")
 
         return memory.percent
- 
+
     # 检查磁盘
     def check_disk(self):
         alerts = []  # 存储磁盘告警信息
