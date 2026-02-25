@@ -20,42 +20,81 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
 
-          # 下面是直接在服务器上运行的命令
           script: |
-            echo "🚀 开始全自动部署..."
+            echo "🚀 开始全自动部署 (修复编译环境版)..."
             
-            # 1. 智能安装系统依赖 (Git, Python, Pip)
-            echo "🔍 检查并安装系统环境..."
+            # ==========================================
+            # 1. 安装系统依赖 + 编译工具链 (关键修复点)
+            # ==========================================
+            echo "🔍 检查并安装系统环境及编译工具..."
             if command -v yum &> /dev/null; then
-                # CentOS/Alibaba Cloud Linux
-                yum install -y git python3 python3-pip || dnf install -y git python3 python3-pip
+                # CentOS / Alibaba Cloud Linux
+                # 安装 git, python3, pip
+                # 安装 gcc, gcc-c++, make: 解决 C 语言编译问题
+                # 安装 python3-devel: 提供 Python 头文件，解决 psutil 编译报错
+                yum install -y git python3 python3-pip gcc gcc-c++ make python3-devel
             elif command -v apt &> /dev/null; then
-                # Ubuntu/Debian
+                # Ubuntu / Debian
                 apt update
-                DEBIAN_FRONTEND=noninteractive apt install -y git python3 python3-pip
+                DEBIAN_FRONTEND=noninteractive apt install -y git python3 python3-pip gcc g++ make python3-dev build-essential
             else
-                echo "❌ 未识别的操作系统，无法自动安装依赖"
+                echo "❌ 未识别的操作系统"
                 exit 1
             fi
             
-            # 2. 智能处理代码仓库 (第一次克隆，后续拉取)
+            # ==========================================
+            # 2. 智能处理代码仓库 (首次克隆/后续拉取)
+            # ==========================================
             cd ~
             PROJECT_DIR="linux-hardware-monitor"
+            # 自动获取当前仓库地址，无需硬编码
             REPO_URL="https://github.com/${{ github.repository }}.git"
             
             if [ ! -d "$PROJECT_DIR" ]; then
-                echo "📂 首次部署：正在克隆代码仓库..."
+                echo "📂 首次部署：检测到目录不存在，正在克隆仓库..."
                 git clone $REPO_URL $PROJECT_DIR
             else
-                echo "📂 更新部署：正在拉取最新代码..."
+                echo "📂 更新部署：检测到目录存在，正在拉取最新代码..."
                 cd $PROJECT_DIR
                 git pull origin main
             fi
             
-            # 3. 进入项目目录
+            # 确保进入项目目录
             cd ~/$PROJECT_DIR
             
-            # 4. 执行具体的部署脚本 (install deps, restart service)
-            echo "🛠️ 执行部署脚本..."
+            # ==========================================
+            # 3. 安装 Python 依赖 (此时编译环境已就绪)
+            # ==========================================
+            echo "📦 正在安装 Python 依赖 (psutil 等)..."
+            # 使用 --user 避免权限问题
+            # 升级 pip 以防万一
+            python3 -m pip install --upgrade pip --user
+            python3 -m pip install --user -r requirements.txt
+            
+            # ==========================================
+            # 4. 重启服务
+            # ==========================================
+            echo "🛑 停止旧进程..."
+            pkill -f "python3 monitor.py" || true
+            
+            echo "▶️ 启动新服务..."
             chmod +x deploy.sh
-            bash deploy.sh
+            # 后台运行，日志由 python 代码内部记录到 system-manager.log
+            nohup python3 monitor.py > /dev/null 2>&1 &
+            
+            # ==========================================
+            # 5. 验证结果
+            # ==========================================
+            echo "⏳ 等待服务启动..."
+            sleep 3
+            
+            if pgrep -f "python3 monitor.py" > /dev/null; then
+                echo "✅ 部署成功！监控系统已运行。"
+                echo "📝 最新日志预览:"
+                tail -n 5 system-manager.log || echo "日志文件暂未生成，请稍后查看。"
+            else
+                echo "❌ 部署失败！服务未能启动。"
+                echo "🔍 尝试手动运行一次以查看错误:"
+                python3 monitor.py
+                exit 1
+            fi
