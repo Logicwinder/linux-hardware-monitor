@@ -12,62 +12,19 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Trigger Async Deployment
+      - name: Run Remote Deployment Script
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          # 这里只需要很短的超时，因为主脚本只负责触发
+          # 超时设短一点，因为只是触发一下
           args: --timeout 60s
 
+          # 【关键】这里不再写长篇脚本，只调用服务器上的文件
           script: |
-            echo "🚀 触发异步部署任务..."
-            
-            PROJECT_DIR="$HOME/linux-hardware-monitor"
-            REPO_URL="https://github.com/${{ github.repository }}.git"
-            
-            # 1. 确保代码最新
-            if [ ! -d "$PROJECT_DIR" ]; then
-                git clone $REPO_URL $PROJECT_DIR
-            else
-                cd $PROJECT_DIR && git pull origin main
-            fi
-            
-            # 2. 创建后台运行脚本
-            cat > /tmp/run_deploy.sh << 'EOF'
-#!/bin/bash
-set -e
-cd ~/linux-hardware-monitor
-echo "[$(date)] 开始后台部署..." >> ~/deploy_status.log
-
-# 安装环境
-if command -v yum &> /dev/null; then
-    yum install -y epel-release git gcc gcc-c++ make python3 python3-pip python3-devel >> ~/deploy_status.log 2>&1 || true
-else
-    apt update >> ~/deploy_status.log 2>&1 && apt install -y git gcc g++ make python3 python3-pip python3-dev >> ~/deploy_status.log 2>&1 || true
-fi
-
-# 安装依赖 (清华源)
-python3 -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple --user >> ~/deploy_status.log 2>&1
-python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --user -r requirements.txt >> ~/deploy_status.log 2>&1
-
-# 重启服务
-pkill -f "python3 monitor.py" || true
-nohup python3 monitor.py > /dev/null 2>&1 &
-
-sleep 3
-if pgrep -f "python3 monitor.py" > /dev/null; then
-    echo "[$(date)] ✅ SUCCESS" >> ~/deploy_status.log
-else
-    echo "[$(date)] ❌ FAILED" >> ~/deploy_status.log
-fi
-EOF
-            
-            chmod +x /tmp/run_deploy.sh
-            
-            # 3. 后台执行并立即退出
-            nohup bash /tmp/run_deploy.sh > /dev/null 2>&1 &
-            
-            echo "✅ 任务已触发，请查看服务器 ~/deploy_status.log"
+            echo "🚀 触发服务器自动部署脚本..."
+            # 使用 nohup 让脚本在后台跑，GitHub 立即返回成功
+            nohup bash ~/auto_deploy.sh > /dev/null 2>&1 &
+            echo "✅ 部署任务已下发！请查看服务器 ~/deploy_status.log"

@@ -1,72 +1,30 @@
 #!/bin/bash
-
-# 设置脚本遇到错误就停止
 set -e
+cd ~/linux-hardware-monitor
 
-echo "🚀 开始部署 Linux 硬件监控脚本..."
+echo "[$(date)] 开始部署..." >> ~/deploy_status.log
 
-# ==========================================
-# 1. 【新增】自动检测并安装系统依赖 (Git, Python, Pip)
-# ==========================================
-echo "🔍 检查系统环境..."
+# 1. 拉取最新代码
+git pull origin main >> ~/deploy_status.log 2>&1
 
-# 检测是否是 CentOS/RedHat 系统
+# 2. 安装系统依赖
 if command -v yum &> /dev/null; then
-    echo "📦 检测到 CentOS/RedHat 系统，正在安装依赖..."
-    # 安装 Git, Python3, Pip3
-    # -y 表示自动确认，--assumeyes 是某些版本的写法，通常 -y 即可
-    yum install -y git python3 python3-pip || {
-        echo "⚠️  yum 安装失败，尝试使用 dnf..."
-        dnf install -y git python3 python3-pip
-    }
-
-# 检测是否是 Ubuntu/Debian 系统
-elif command -v apt &> /dev/null; then
-    echo "📦 检测到 Ubuntu/Debian 系统，正在安装依赖..."
-    # 先更新软件源列表
-    apt update
-    # 安装 Git, Python3, Pip3
-    DEBIAN_FRONTEND=noninteractive apt install -y git python3 python3-pip
-
+    yum install -y epel-release git gcc gcc-c++ make python3 python3-pip python3-devel >> ~/deploy_status.log 2>&1 || true
 else
-    echo "❌ 未识别的系统类型，请手动安装 git, python3, python3-pip"
-    exit 1
+    apt update >> ~/deploy_status.log 2>&1 && apt install -y git gcc g++ make python3 python3-pip python3-dev >> ~/deploy_status.log 2>&1 || true
 fi
 
-echo "✅ 系统依赖检查/安装完成。"
+# 3. 安装 Python 依赖 (清华源)
+python3 -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple --user >> ~/deploy_status.log 2>&1
+python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --user -r requirements.txt >> ~/deploy_status.log 2>&1
 
-# ==========================================
-# 2. 进入项目目录
-# ==========================================
-cd "$(dirname "$0")"
-
-# ==========================================
-# 3. 安装 Python 依赖 (requirements.txt)
-# ==========================================
-echo "📦 正在安装 Python 依赖 (requirements.txt)..."
-# 使用 python3 -m pip 确保使用的是刚才安装的 pip3
-python3 -m pip install --user -r requirements.txt
-
-# ==========================================
-# 4. 停止旧的进程
-# ==========================================
-echo "🛑 检查并停止旧进程..."
+# 4. 重启服务
 pkill -f "python3 monitor.py" || true
-
-# ==========================================
-# 5. 启动新进程 (后台运行)
-# ==========================================
-echo "▶️ 启动监控服务..."
 nohup python3 monitor.py > /dev/null 2>&1 &
 
-# ==========================================
-# 6. 验证启动
-# ==========================================
-sleep 2
+sleep 3
 if pgrep -f "python3 monitor.py" > /dev/null; then
-    echo "✅ 部署成功！监控服务已运行。"
-    tail -n 5 system-manager.log || echo "日志文件尚未生成，请稍后查看。"
+    echo "[$(date)] ✅ SUCCESS" >> ~/deploy_status.log
 else
-    echo "❌ 部署失败！服务未能启动。"
-    exit 1
+    echo "[$(date)] ❌ FAILED" >> ~/deploy_status.log
 fi
