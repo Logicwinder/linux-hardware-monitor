@@ -19,58 +19,75 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          # 【关键】超时时间设为 900 秒 (15 分钟)，足够编译 psutil 了
-          args: --timeout 900s --command-timeout 900s
+          # 超时时间设长一点，防止安装慢
+          args: --timeout 600s
 
           script: |
-            set -e  # 遇到错误立即停止并报错
+            echo "🚀 开始同步部署..."
+            set -e
             
-            echo "🚀 开始同步部署 (直球模式)..."
+            # ==========================================
+            # 1. 【关键修复】强制安装 Git 和编译工具
+            # ==========================================
+            echo "🔧 检查并安装基础环境 (Git, GCC, Python)..."
+            
+            if command -v yum &> /dev/null; then
+                # CentOS / Alibaba Cloud Linux
+                # 安装 epel-release 以防万一，然后安装 git, gcc, python3
+                yum install -y epel-release || true
+                yum install -y git gcc gcc-c++ make python3 python3-pip python3-devel
+            elif command -v apt &> /dev/null; then
+                # Ubuntu / Debian
+                apt update
+                DEBIAN_FRONTEND=noninteractive apt install -y git gcc g++ make python3 python3-pip python3-dev
+            else
+                echo "❌ 未识别的操作系统"
+                exit 1
+            fi
+            
+            # 验证 Git 是否安装成功
+            git --version
+            
+            # ==========================================
+            # 2. 准备代码目录
+            # ==========================================
             cd ~
-            
             PROJECT_DIR="linux-hardware-monitor"
             REPO_URL="https://github.com/${{ github.repository }}.git"
             
-            # 1. 代码准备
             if [ ! -d "$PROJECT_DIR" ]; then
-                echo "📂 克隆仓库..."
+                echo "📂 首次部署：克隆仓库..."
                 git clone $REPO_URL $PROJECT_DIR
+            else
+                echo "📂 更新部署：拉取最新代码..."
+                cd $PROJECT_DIR
+                git pull origin main
             fi
             
-            cd $PROJECT_DIR
-            echo "🔄 拉取代码..."
-            git pull origin main
+            cd ~/$PROJECT_DIR
             
-            # 2. 安装系统依赖 (静默安装，减少日志干扰)
-            echo "🔧 检查系统编译环境..."
-            if command -v yum &> /dev/null; then
-                yum install -y gcc gcc-c++ python3-devel > /dev/null 2>&1 || true
-            elif command -v apt &> /dev/null; then
-                apt update > /dev/null 2>&1 && apt install -y gcc g++ python3-dev > /dev/null 2>&1 || true
-            fi
+            # ==========================================
+            # 3. 安装 Python 依赖 (使用清华源加速)
+            # ==========================================
+            echo "📦 安装 Python 依赖..."
+            python3 -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple --user
+            python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --user -r requirements.txt
             
-            # 3. 安装 Python 依赖 (这是最慢的，但我们有 15 分钟超时)
-            echo "📦 安装 Python 依赖 (可能需要几分钟，请耐心等待)..."
-            python3 -m pip install --upgrade pip --user > /dev/null 2>&1
-            
-            # 【关键】强制重新编译 psutil，避免缓存导致的奇怪错误
-            # 如果之前装坏了，这步会修复它
-            python3 -m pip install --user --force-reinstall --no-cache-dir -r requirements.txt
-            
+            # ==========================================
             # 4. 重启服务
+            # ==========================================
             echo "🛑 停止旧进程..."
             pkill -f "python3 monitor.py" || true
             
             echo "▶️ 启动新服务..."
             nohup python3 monitor.py > /dev/null 2>&1 &
             
-            # 5. 验证
             sleep 3
+            
             if pgrep -f "python3 monitor.py" > /dev/null; then
                 echo "✅ 部署成功！服务已运行。"
                 tail -n 5 system-manager.log || echo "日志暂未生成。"
             else
-                echo "❌ 服务启动失败！尝试手动运行查看错误："
-                python3 monitor.py
+                echo "❌ 服务启动失败！"
                 exit 1
             fi
