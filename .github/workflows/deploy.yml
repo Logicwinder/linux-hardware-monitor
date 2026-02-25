@@ -12,82 +12,62 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Deploy to Server via SSH
+      - name: Trigger Async Deployment
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          # 超时时间设长一点，防止安装慢
-          args: --timeout 600s
+          # 这里只需要很短的超时，因为主脚本只负责触发
+          args: --timeout 60s
 
           script: |
-            echo "🚀 开始同步部署..."
-            set -e
+            echo "🚀 触发异步部署任务..."
             
-            # ==========================================
-            # 1. 【关键修复】强制安装 Git 和编译工具
-            # ==========================================
-            echo "🔧 检查并安装基础环境 (Git, GCC, Python)..."
-            
-            if command -v yum &> /dev/null; then
-                # CentOS / Alibaba Cloud Linux
-                # 安装 epel-release 以防万一，然后安装 git, gcc, python3
-                yum install -y epel-release || true
-                yum install -y git gcc gcc-c++ make python3 python3-pip python3-devel
-            elif command -v apt &> /dev/null; then
-                # Ubuntu / Debian
-                apt update
-                DEBIAN_FRONTEND=noninteractive apt install -y git gcc g++ make python3 python3-pip python3-dev
-            else
-                echo "❌ 未识别的操作系统"
-                exit 1
-            fi
-            
-            # 验证 Git 是否安装成功
-            git --version
-            
-            # ==========================================
-            # 2. 准备代码目录
-            # ==========================================
-            cd ~
-            PROJECT_DIR="linux-hardware-monitor"
+            PROJECT_DIR="$HOME/linux-hardware-monitor"
             REPO_URL="https://github.com/${{ github.repository }}.git"
             
+            # 1. 确保代码最新
             if [ ! -d "$PROJECT_DIR" ]; then
-                echo "📂 首次部署：克隆仓库..."
                 git clone $REPO_URL $PROJECT_DIR
             else
-                echo "📂 更新部署：拉取最新代码..."
-                cd $PROJECT_DIR
-                git pull origin main
+                cd $PROJECT_DIR && git pull origin main
             fi
             
-            cd ~/$PROJECT_DIR
+            # 2. 创建后台运行脚本
+            cat > /tmp/run_deploy.sh << 'EOF'
+#!/bin/bash
+set -e
+cd ~/linux-hardware-monitor
+echo "[$(date)] 开始后台部署..." >> ~/deploy_status.log
+
+# 安装环境
+if command -v yum &> /dev/null; then
+    yum install -y epel-release git gcc gcc-c++ make python3 python3-pip python3-devel >> ~/deploy_status.log 2>&1 || true
+else
+    apt update >> ~/deploy_status.log 2>&1 && apt install -y git gcc g++ make python3 python3-pip python3-dev >> ~/deploy_status.log 2>&1 || true
+fi
+
+# 安装依赖 (清华源)
+python3 -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple --user >> ~/deploy_status.log 2>&1
+python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --user -r requirements.txt >> ~/deploy_status.log 2>&1
+
+# 重启服务
+pkill -f "python3 monitor.py" || true
+nohup python3 monitor.py > /dev/null 2>&1 &
+
+sleep 3
+if pgrep -f "python3 monitor.py" > /dev/null; then
+    echo "[$(date)] ✅ SUCCESS" >> ~/deploy_status.log
+else
+    echo "[$(date)] ❌ FAILED" >> ~/deploy_status.log
+fi
+EOF
             
-            # ==========================================
-            # 3. 安装 Python 依赖 (使用清华源加速)
-            # ==========================================
-            echo "📦 安装 Python 依赖..."
-            python3 -m pip install --upgrade pip -i https://pypi.tuna.tsinghua.edu.cn/simple --user
-            python3 -m pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --user -r requirements.txt
+            chmod +x /tmp/run_deploy.sh
             
-            # ==========================================
-            # 4. 重启服务
-            # ==========================================
-            echo "🛑 停止旧进程..."
-            pkill -f "python3 monitor.py" || true
+            # 3. 后台执行并立即退出
+            nohup bash /tmp/run_deploy.sh > /dev/null 2>&1 &
             
-            echo "▶️ 启动新服务..."
-            nohup python3 monitor.py > /dev/null 2>&1 &
-            
-            sleep 3
-            
-            if pgrep -f "python3 monitor.py" > /dev/null; then
-                echo "✅ 部署成功！服务已运行。"
-                tail -n 5 system-manager.log || echo "日志暂未生成。"
-            else
-                echo "❌ 服务启动失败！"
-                exit 1
-            fi
+            echo "✅ 任务已触发，请查看服务器 ~/deploy_status.log"
