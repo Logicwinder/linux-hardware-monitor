@@ -20,56 +20,42 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
 
-          # 这里是核心：自动检测并初始化环境
+          # 下面是直接在服务器上运行的命令
           script: |
-            echo "🚀 开始自动化部署流程..."
-
-          # 1. 自动安装 Git 和 Python (如果没装)
-            echo "🔍 检查并安装系统依赖..."
+            echo "🚀 开始全自动部署..."
+            
+            # 1. 智能安装系统依赖 (Git, Python, Pip)
+            echo "🔍 检查并安装系统环境..."
             if command -v yum &> /dev/null; then
+                # CentOS/Alibaba Cloud Linux
                 yum install -y git python3 python3-pip || dnf install -y git python3 python3-pip
             elif command -v apt &> /dev/null; then
-                apt update && DEBIAN_FRONTEND=noninteractive apt install -y git python3 python3-pip
+                # Ubuntu/Debian
+                apt update
+                DEBIAN_FRONTEND=noninteractive apt install -y git python3 python3-pip
+            else
+                echo "❌ 未识别的操作系统，无法自动安装依赖"
+                exit 1
             fi
             
-            # 2. 进入家目录
+            # 2. 智能处理代码仓库 (第一次克隆，后续拉取)
             cd ~
-            
-            # 3. 智能判断：如果项目文件夹不存在，则克隆；如果存在，则拉取更新
             PROJECT_DIR="linux-hardware-monitor"
             REPO_URL="https://github.com/${{ github.repository }}.git"
             
             if [ ! -d "$PROJECT_DIR" ]; then
-                echo "📂 项目文件夹不存在，正在克隆仓库..."
+                echo "📂 首次部署：正在克隆代码仓库..."
                 git clone $REPO_URL $PROJECT_DIR
             else
-                echo "📂 项目文件夹已存在，正在拉取最新代码..."
+                echo "📂 更新部署：正在拉取最新代码..."
                 cd $PROJECT_DIR
                 git pull origin main
             fi
             
-            # 4. 进入项目目录 (确保无论上面走了哪个分支，现在都在目录里)
+            # 3. 进入项目目录
             cd ~/$PROJECT_DIR
             
-            # 5. 安装 Python 依赖
-            echo "📦 安装 Python 依赖..."
-            python3 -m pip install --user -r requirements.txt
-            
-            # 6. 停止旧进程
-            echo "🛑 停止旧进程..."
-            pkill -f "python3 monitor.py" || true
-            
-            # 7. 启动新进程
-            echo "▶️ 启动新服务..."
+            # 4. 执行具体的部署脚本 (install deps, restart service)
+            echo "🛠️ 执行部署脚本..."
             chmod +x deploy.sh
-            nohup python3 monitor.py > /dev/null 2>&1 &
-            
-            # 8. 验证
-            sleep 2
-            if pgrep -f "python3 monitor.py" > /dev/null; then
-                echo "✅ 部署成功！服务已运行。"
-                tail -n 5 system-manager.log || echo "日志尚未生成。"
-            else
-                echo "❌ 部署失败！服务未启动。"
-                exit 1
-            fi
+            bash deploy.sh
