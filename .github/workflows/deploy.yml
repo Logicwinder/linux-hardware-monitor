@@ -19,75 +19,58 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-
-          # 【关键修复】增加超时时间到 600 秒 (10 分钟)，防止首次安装依赖时被强行断开
-          args: --timeout 600s
+          # 【关键】超时时间设为 900 秒 (15 分钟)，足够编译 psutil 了
+          args: --timeout 900s --command-timeout 900s
 
           script: |
-            echo "🚀 开始全自动部署 (增加超时保护)..."
+            set -e  # 遇到错误立即停止并报错
             
-            # ==========================================
-            # 1. 安装系统依赖 + 编译工具链
-            # ==========================================
-            echo "🔍 检查并安装系统环境及编译工具..."
-            if command -v yum &> /dev/null; then
-                # CentOS / Alibaba Cloud Linux
-                # 添加 -y 自动确认，添加 --skip-broken 防止个别包冲突卡住
-                yum install -y git python3 python3-pip gcc gcc-c++ make python3-devel
-            elif command -v apt &> /dev/null; then
-                # Ubuntu / Debian
-                apt update
-                DEBIAN_FRONTEND=noninteractive apt install -y git python3 python3-pip gcc g++ make python3-dev build-essential
-            fi
-            
-            # ==========================================
-            # 2. 智能处理代码仓库
-            # ==========================================
+            echo "🚀 开始同步部署 (直球模式)..."
             cd ~
+            
             PROJECT_DIR="linux-hardware-monitor"
             REPO_URL="https://github.com/${{ github.repository }}.git"
             
+            # 1. 代码准备
             if [ ! -d "$PROJECT_DIR" ]; then
-                echo "📂 首次部署：检测到目录不存在，正在克隆仓库..."
+                echo "📂 克隆仓库..."
                 git clone $REPO_URL $PROJECT_DIR
-            else
-                echo "📂 更新部署：检测到目录存在，正在拉取最新代码..."
-                cd $PROJECT_DIR
-                git pull origin main
             fi
             
-            cd ~/$PROJECT_DIR
+            cd $PROJECT_DIR
+            echo "🔄 拉取代码..."
+            git pull origin main
             
-            # ==========================================
-            # 3. 安装 Python 依赖
-            # ==========================================
-            echo "📦 正在安装 Python 依赖 (psutil 等)..."
-            # 升级 pip
-            python3 -m pip install --upgrade pip --user
-            # 安装依赖 (这里最耗时)
-            python3 -m pip install --user -r requirements.txt
+            # 2. 安装系统依赖 (静默安装，减少日志干扰)
+            echo "🔧 检查系统编译环境..."
+            if command -v yum &> /dev/null; then
+                yum install -y gcc gcc-c++ python3-devel > /dev/null 2>&1 || true
+            elif command -v apt &> /dev/null; then
+                apt update > /dev/null 2>&1 && apt install -y gcc g++ python3-dev > /dev/null 2>&1 || true
+            fi
             
-            # ==========================================
+            # 3. 安装 Python 依赖 (这是最慢的，但我们有 15 分钟超时)
+            echo "📦 安装 Python 依赖 (可能需要几分钟，请耐心等待)..."
+            python3 -m pip install --upgrade pip --user > /dev/null 2>&1
+            
+            # 【关键】强制重新编译 psutil，避免缓存导致的奇怪错误
+            # 如果之前装坏了，这步会修复它
+            python3 -m pip install --user --force-reinstall --no-cache-dir -r requirements.txt
+            
             # 4. 重启服务
-            # ==========================================
             echo "🛑 停止旧进程..."
             pkill -f "python3 monitor.py" || true
             
             echo "▶️ 启动新服务..."
-            chmod +x deploy.sh
             nohup python3 monitor.py > /dev/null 2>&1 &
             
-            # ==========================================
-            # 5. 验证结果
-            # ==========================================
-            echo "⏳ 等待服务启动..."
+            # 5. 验证
             sleep 3
-            
             if pgrep -f "python3 monitor.py" > /dev/null; then
-                echo "✅ 部署成功！监控系统已运行。"
-                echo "📝 最新日志预览:"
-                tail -n 5 system-manager.log || echo "日志文件暂未生成。"
+                echo "✅ 部署成功！服务已运行。"
+                tail -n 5 system-manager.log || echo "日志暂未生成。"
             else
-                echo "❌ 部署失败！服务未能启动。"
+                echo "❌ 服务启动失败！尝试手动运行查看错误："
+                python3 monitor.py
                 exit 1
             fi
